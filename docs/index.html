@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+ <meta charset="UTF-8"> 
+ <meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0">
+ <title>Scrapbox→はてな記法 コンバータ</title>
+ <style type="text/css">
+button{
+  height: 3rem;
+  width: 3rem;
+  font-family : inherit;
+  font-size: 100%;
+}
+#buttons_pc{
+  margin-left:0.7rem;
+}
+#buttons_phone{
+  text-align: center;
+}
+@media screen and (max-width:680px){
+  .container{
+    width: 100%;
+  }
+  .textarea_container{
+    width: 100%;
+  }
+  textarea {
+   width: 100%;
+   resize: vertical;
+   font-family : inherit;
+   font-size: 100%;
+   height: 33vh;
+  }
+}
+@media screen and (min-width:680px){
+  .container{
+    display: grid;
+    align-items: center;
+    grid-template-columns: 1fr 4rem 1fr;
+    grid-template-rows: 2rem 70vh;
+  }
+  textarea {
+    width: 100%;
+    font-family : inherit;
+    font-size: 100%;
+    height: 70vh;
+  }
+  #legend_scrapbox{
+    display: block;
+    grid-row: 1 / 2;
+    grid-column: 1 / 2;
+  }
+  #texcont_scrapbox{
+    grid-row: 2 / 3;
+    grid-column: 1 / 2;
+  }
+  #legend_hatena{
+    white-space: nowrap; 
+    grid-row: 1 / 2;
+    grid-column: 3 / 4;
+  }
+  #texcont_hatena{
+    grid-row: 2 / 3;
+    grid-column: 3 / 4;
+  }
+  #buttons_pc{
+    grid-row: 2 / 3;
+    grid-column: 2 / 3;
+  }
+}
+ </style>
+ <script type="text/javascript">
+function is_url(url){
+  return url.startsWith("http://")
+      || url.startsWith("https://")
+}
+function is_picture_url(url){ //画像ファイルのURLならtrue
+  lower_url = url.toLowerCase();
+  if ( !is_url(lower_url) ) 
+    return false; // URLでない
+  //拡張子は適宜追加
+  return lower_url.endsWith(".jpg")
+      || lower_url.endsWith(".jpeg")
+      || lower_url.endsWith(".png")
+      || lower_url.endsWith(".gif")
+      || lower_url.endsWith(".svg") ;
+}
+function convert_remaining_line(text){
+  if (!text) return ""; //再帰の終了条件
+  var converted_line = "";
+  // [または`の場所を探す
+  var remaining_line = text;
+  
+  var index_open = remaining_line.search(/[\[`]/);
+  var index_close;
+  if (index_open >= 0) { //マッチした
+    var front_text = remaining_line.slice(0, index_open);
+    var matched_sign = remaining_line[index_open];
+    remaining_line = remaining_line.slice(index_open+1);
+    converted_line += front_text;
+    if (matched_sign == "[") {
+      //もし次の文字も[だったらちょっと状況が異なる
+      if (remaining_line[0] == "[") {
+        index_close = remaining_line.indexOf("]]");
+        if (index_close == -1) { //マッチしない
+          converted_line += "[";
+          return converted_line + convert_remaining_line(remaining_line);
+        } else { //マッチ
+          var matched_text = remaining_line.slice(1, index_close);
+          remaining_line = remaining_line.slice(index_close + 2);
+          
+          if (is_picture_url(matched_text)){ // 画像ファイルなら画像にする
+            converted_line += "[" + matched_text + ":image]";
+          } else { //さもなくば太字
+            converted_line += "<b>" + matched_text + "</b>";
+          }
+          return converted_line + convert_remaining_line(remaining_line);
+        }
+      } else { // "["で始まるが"[["でないとき
+        index_close = remaining_line.indexOf("]");
+        if (index_close >= 0) { //マッチ
+          bracketed_text = remaining_line.slice(0, index_close);
+          remaining_line = remaining_line.slice(index_close+1);
+          //[～]の中身が摂れたのでここから分岐して判断していく
+          //書式指定 *, /, -, _の場合
+          result = bracketed_text.match(/^([\*\/\-_]+) /);
+          if (result) {
+            var text_to_format = bracketed_text.replace(/^[\*\/\-_]+ /, "");
+            var open_tag = "";
+            var close_tag = "";
+            var format_chars = result[1];
+            var num_bold = (format_chars.match(/\*/g) || []).length; //*の個数
+            var italic = format_chars.indexOf("/") != -1; //見つかったときtrue
+            var stroke = format_chars.indexOf("-") != -1; //見つかったときtrue
+            var underline = format_chars.indexOf("_") != -1; //見つかったときtrue
+            if (num_bold > 1) { //2個以上*があったら文字を大きくする
+              var fontsize = Math.round((1.2 ** (num_bold-1))*100); //1.2^(*の個数-1) %
+              open_tag += '<span style="font-size: ' + fontsize + '%">';
+              close_tag = "</span>" + close_tag;
+            }
+            if (num_bold) { // *があれば太字にする
+              open_tag += "<b>"
+              close_tag = "</b>" + close_tag;
+            }
+            if (italic) {
+              open_tag += "<i>"
+              close_tag = "</i>" + close_tag;
+            }
+            if (stroke) {
+              open_tag += "<s>"
+              close_tag = "</s>" + close_tag;
+            }
+            if (underline) {
+              open_tag += "<u>"
+              close_tag = "</u>" + close_tag;
+            }
+            converted_line += open_tag + text_to_format + close_tag;
+            return converted_line + convert_remaining_line(remaining_line);
+          }
+          //数式
+          if (bracketed_text.startsWith("$ ")) {
+            var tex_formula = bracketed_text.slice(2);
+            converted_line += "[tex: " + tex_formula + "]";
+            return converted_line + convert_remaining_line(remaining_line);
+          }
+          // リンク, 画像の拡張子なら画像, スペースが入ってるか?→入ってるならURLリンク: あとの方がラベルになる
+          var space_index = bracketed_text.indexOf(" ");
+          if (space_index == -1){ //スペースなし
+            if (is_picture_url(bracketed_text)){ //画像ファイル
+              converted_line += "[" + bracketed_text + ":image]";
+            } else { //リンク
+              converted_line += "[" + bracketed_text + "]";
+            }
+          } else { //スペースが入っている
+            // 最初のスペースより前と後に分割、もしスペースより前がURLなら後をラベルにする
+            var before_space = bracketed_text.slice(0, space_index);
+            var after_space = bracketed_text.slice(space_index+1);
+            if (is_url(before_space)){ //スペースより前がURL
+              converted_line += "[" + before_space + ":title=" + after_space + "]";
+            } else { //スペースより前がURLでない
+              var last_space_index = bracketed_text.lastIndexOf(" ");
+              before_space = bracketed_text.slice(0, last_space_index);
+              after_space = bracketed_text.slice(last_space_index+1);
+              if (is_url(after_space)){ //最後のスペースより後がURL
+                converted_line += "[" + after_space + ":title=" + before_space + "]";
+              } else { //URLでない
+                converted_line += "[" + bracketed_text + "]";
+              }
+            }
+          }
+          return converted_line + convert_remaining_line(remaining_line);
+        } else {
+          //マッチしなかったら[をそのまま追加して続行
+          converted_line += "[";
+          remaining_line = remaining_line.slice(1);
+          return converted_line + convert_remaining_line(remaining_line);
+        }
+      }
+    } else if (matched_sign == "`") {
+      index_close = 0;
+      // 終端となる`を探す:
+      // 1) 0文字目が"`"→終了
+      // 2) /[^\\]`/でマッチ→そこでOK
+      // 3) →マッチしなければ 後ろから`を検索
+      // 4) なければ`をそのまま追加して続行
+      var code_content;
+      if (remaining_line[0] == "`") {
+        code_content = "";
+        remaining_line = remaining_line.slice(1);
+        converted_line = "<code>" + quoted_text + "</code>";
+        return converted_line + convert_remaining_line(remaining_line);
+      } 
+      // \`でない`を探す
+      index_close = remaining_line.search(/[^\\]`/);
+      if (index_close != -1) { //match
+        code_content = remaining_line.slice(0, index_close+1);
+        remaining_line = remaining_line.slice(index_close+2);
+      } else { //マッチしない場合、最後の方から`を探す
+        index_close = remaining_line.lastIndexOf("`");
+        if (index_close != -1) { //match
+          code_content = remaining_line.slice(0, index_close);
+          remaining_line = remaining_line.slice(index_close+1);
+        } else { //対応なし
+          remaining_line = remaining_line.slice(1);
+          converted_line += "`";
+          return converted_line + convert_remaining_line(remaining_line);
+        }
+      }
+      // code_contentが[または]または\`の時はその記号だけ表示したい時なので<code>で囲まない
+      if (code_content == "[") { 
+        converted_line += "[";
+      } else if (code_content == "]") {
+        converted_line += "]";
+      } else if (code_content == "\\`") {
+        converted_line += "`";
+      } else {
+        code_content = code_content.replace("\\`", "`");
+        converted_line += "<code>" + code_content + "</code>";
+      }
+      return converted_line + convert_remaining_line(remaining_line);
+    }
+  } else { // "["または"`"を含まない
+    converted_line += remaining_line;
+    remaining_line = "";
+  }
+  return converted_line + convert_remaining_line(remaining_line);
+}
+
+function scrapbox2hatena(text){
+  var converted_text = ""; //変換後テキスト
+  var lines = text.split("\n"); //行ごとに処理することを考える。改行コードがCRだけは無視
+  var mode = "default"; // default: 箇条書き, code: コードブロック, table: 表組み, quote: 引用
+  var num_indent_block = 0; //コードブロック、表組み判定用
+  var num_indent = 0; //先頭インデントの個数
+  for (var i=0; i < lines.length; i++) { //行ごとに処理
+    var line = lines[i];
+    
+    var converted_line = "";
+    var endline_cr = "";
+    if (line.endsWith("\r")){ //CRで終わる場合(Windows環境)
+      endline_cr = "\r"; //行末CRを保持
+      line = line.replace("\r",""); // 行末CRを削除
+    }
+    // 現在のインデントの個数の計算
+    var topspaces = line.match(/^([\s\t]*)/u) //インデントの数を見る. unicodeフラグいるか?
+    var num_indent;
+    if (topspaces){ // マッチした場合
+      num_indent = topspaces[1].length;
+    } else {
+      num_indent = 0;
+    }
+    
+    switch(mode){ //モードによって処理を変える
+    case "default": // 箇条書きモード
+      line = line.replace(/^[\s\t]*/u, ""); //先頭スペースを削除
+      //console.log(line);
+      // 箇条書き。 /^\d+\. / (1. , 2. , ...で始まる→数字つき箇条書きにする。さもなくばビュレットリスト
+      result = line.match(/^\d+\. /);
+      if (result) { //数字リスト
+        converted_line += "+".repeat(num_indent) + (num_indent ? " " : "");
+      } else { //ビュレットリスト
+        converted_line += "-".repeat(num_indent) + (num_indent ? " " : "");
+      }
+      // /^code:.+/で始まる: コードブロック
+      result = line.match(/^code:(.+)/);
+      if (result) { //コードブロック
+        var filename_or_lang = result[1].toLowerCase(); //大文字小文字を区別しない
+        var language; //言語判定を気合で羅列する
+        if (  filename_or_lang.endsWith(".py") 
+           || filename_or_lang == "py"
+           || filename_or_lang == "python" ) {
+              language = "python";
+        } else if (  filename_or_lang.endsWith(".html")
+                  || filename_or_lang.endsWith(".htm")
+                  || filename_or_lang == "html" ) {
+              language = "html";
+        } else if (  filename_or_lang.endsWith(".css")
+                  || filename_or_lang == "css" ) {
+              language = "css";
+        } else if (  filename_or_lang.endsWith(".js")
+                  || filename_or_lang == "js"
+                  || filename_or_lang == "javascript" ) {
+              language = "javascript";
+        } else if (  filename_or_lang.endsWith(".rb")
+                  || filename_or_lang == "rb"
+                  || filename_or_lang == "ruby" ) {
+              language = "ruby";
+        } else if (  filename_or_lang.endsWith(".c")
+                  || filename_or_lang == "c" ) {
+              language = "c";
+        } else if (  filename_or_lang.endsWith(".md")
+                  || filename_or_lang == "md"
+                  || filename_or_lang == "markdown" ) {
+              language = "markdown";
+        } else if (  filename_or_lang.endsWith(".sh")
+                  || filename_or_lang == "sh" ) {
+              language = "sh";
+        } else { //不明
+            language = "";
+        }
+        converted_line = ">|" + language + "|" + endline_cr + "\n"; //箇条書きは消す
+        mode = "code";
+        num_indent_block = num_indent;
+        converted_text += converted_line; 
+        continue;
+      }
+      // /^table:.+/で始まる: 表組み
+      result = line.match(/^table:(.+)/);
+      if (result) { //表組ブロック
+        converted_line = ""; //箇条書きは消す
+        mode = "table";
+        num_indent_block = num_indent;
+        //converted_text += converted_line; 
+        continue;
+      }
+      // > で始まる: 引用
+      if (line[0] == ">") {
+        converted_line = ">>" + endline_cr + "\n"; //箇条書きを消す
+        mode = "quote";
+        num_indent_block = num_indent;
+        converted_text += converted_line;
+        i--; //もう一回同じ行を処理
+        continue;
+      }
+      // "$ "または"% "で始まる
+      result = line.match(/^[$%] /);
+      if (result) { //コマンドライン
+        converted_line = ">|sh|" + endline_cr + "\n"
+                       + line + endline_cr + "\n"
+                       + "||<" + endline_cr + "\n"; //箇条書きは削除
+        converted_text += converted_line; 
+        continue;
+      }
+      //インデント0かつ[**(**) ～]の行は見出しにする
+      if (num_indent == 0) { 
+        var stripped_line = line.replace(/[\s\t]+$/, ""); //行末空白削除
+        var heading_text = "";
+        if (stripped_line.indexOf("]") == stripped_line.length - 1){ // 行末に"]"が最初に出現する
+          if (stripped_line.startsWith("[**** ")){ //大見出し
+            heading_text = stripped_line.slice(6, -1);
+            converted_line += "*" + heading_text + endline_cr + "\n";
+            converted_text += converted_line;
+            continue;
+          } else if (stripped_line.startsWith("[*** ")){ //中見出し
+            heading_text = stripped_line.slice(5, -1);
+            converted_line += "**" + heading_text + endline_cr + "\n";
+            converted_text += converted_line;
+            continue;
+          } else if (stripped_line.startsWith("[** ")){ //小見立し
+            heading_text = stripped_line.slice(4, -1);
+            converted_line += "***" + heading_text + endline_cr + "\n";
+            converted_text += converted_line;
+            continue;
+          }
+        }
+      }
+      // その他の場合
+      // 数字. で始まる場合"1. ", "2. ", ..., 数字. を消す
+      line = line.replace(/^\d+\. /, "");
+      converted_line += convert_remaining_line(line);
+      converted_line += endline_cr + "\n"; //改行
+      converted_text += converted_line;
+      break; 
+    case "code": // コードブロック内部
+      // インデントの数がコードブロックのヘッダ行(num_indent_block)と同じまたは小さくなったら解除
+      if (num_indent > num_indent_block) { //コードブロック
+        converted_line += line.slice(num_indent_block+1); //インデント削除
+        converted_line += endline_cr + "\n"; //改行
+      } else { //コードブロック解除
+        converted_line += "||<" + endline_cr + "\n";
+        mode = "default";
+        i--; //同じ行をもう一回処理させる
+      }
+      converted_text += converted_line;
+      break;
+    case "table": // 表組み内部
+      // インデントの数が表組みのヘッダ行(num_indent_block)と同じまたは小さくなったら解除
+      if (num_indent > num_indent_block) { //表組みブロック
+        var table_line = line.slice(num_indent_block+1); //インデント削除
+        var table_line_escaped = table_line.replace("|", "&#x7C;"); // "|"をエスケープ
+        var table_cols = table_line_escaped.split("\t");
+        converted_line += "| " + table_cols.join(" | ") + " |"; 
+        converted_line += endline_cr + "\n"; //改行
+      } else { //表組みブロック解除
+        mode = "default";
+        --i; //同じ行をもう一回処理させる
+      }
+      converted_text += converted_line;
+      break;
+    case "quote": // 引用
+      //インデントが変わる、または>で始まらない場合、引用終了
+      if ( (num_indent == num_indent_block)
+         &&(line[num_indent] == ">") ) { //引用継続
+        var quote_text = line.slice(num_indent_block+1); //インデントと">"の削除
+        converted_line = quote_text + endline_cr + "\n";
+      } else { //引用解除
+        converted_line = "<<" + endline_cr + "\n";
+        mode = "default";
+        --i; //同じ行をもう一回処理
+      }
+      converted_text += converted_line;
+      break;
+    }
+  }
+  return converted_text;
+}
+ 
+function convert(){
+  text = document.forms.mainForm.scrapbox.value;
+  text = scrapbox2hatena(text);
+  document.forms.mainForm.hatena.value=text;
+}
+
+function winsize_changed(){
+  if (window.matchMedia("(max-width:680px)").matches){
+    document.getElementById("buttons_pc").style.display = "none";
+    document.getElementById("buttons_phone").style.display = "block";
+  }else{
+    document.getElementById("buttons_pc").style.display = "block";
+    document.getElementById("buttons_phone").style.display = "none";
+  }
+}
+document.addEventListener('DOMContentLoaded', winsize_changed);
+window.addEventListener('resize', winsize_changed, false);
+
+ </script>
+</head>
+<body>
+<h1>Scrapbox記法→はてな記法コンバータ</h1>
+<p>Scrapboxで使われている記法をはてなブログで使われているはてな記法に変換します。完全に一対一変換で変換できる訳ではないのでたたき台として使ってください。</p>
+<form name="mainForm">
+ <div class="container">
+  <legend id="legend_scrapbox">Scrapbox記法</legend>
+  <div class="textarea_container" id="texcont_scrapbox">
+   <textarea name="scrapbox"></textarea>
+  </div>
+  <div id="buttons_pc">
+   <div><button type="button" onclick="convert();">→</button></div>
+  </div>
+  <div id="buttons_phone" style="display:none;">
+   <div><button type="button" onclick="convert();">↓</button></div>
+  </div>
+  <legend id="legend_hatena">はてな記法</legend>
+  <div class="textarea_container" id="texcont_hatena">
+   <textarea name="hatena"></textarea>
+  </div>
+ </div>
+</form>
+
+</body>
+</html>
