@@ -1,0 +1,2 @@
+# scrapbox2hatena
+Scrapboxの記法をはてな記法に変換する
