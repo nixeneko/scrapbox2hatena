@@ -109,7 +109,9 @@ function convert_remaining_line(text){
           var matched_text = remaining_line.slice(1, index_close);
           remaining_line = remaining_line.slice(index_close + 2);
           
-          if (is_picture_url(matched_text)){ // 画像ファイルなら画像にする
+          if (matched_text.startsWith("https://gyazo.com/")){ //Gyazoなら埋め込む
+            converted_line += "[" + matched_text + ":embed]";
+          } else if (is_picture_url(matched_text)){ // 画像ファイルなら画像にする
             converted_line += "[" + matched_text + ":image]";
           } else { //さもなくば太字
             converted_line += "<b>" + matched_text + "</b>";
@@ -166,7 +168,9 @@ function convert_remaining_line(text){
           // リンク, 画像の拡張子なら画像, スペースが入ってるか?→入ってるならURLリンク: あとの方がラベルになる
           var space_index = bracketed_text.indexOf(" ");
           if (space_index == -1){ //スペースなし
-            if (is_picture_url(bracketed_text)){ //画像ファイル
+            if (bracketed_text.startsWith("https://gyazo.com/")){ //Gyazoなら埋め込む
+              converted_line += "[" + bracketed_text + ":embed]";
+            } else if (is_picture_url(bracketed_text)){ //画像ファイル
               converted_line += "[" + bracketed_text + ":image]";
             } else { //リンク
               converted_line += "[" + bracketed_text + "]";
