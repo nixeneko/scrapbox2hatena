@@ -162,6 +162,8 @@ function convert_remaining_line(text){
           //数式
           if (bracketed_text.startsWith("$ ")) {
             var tex_formula = bracketed_text.slice(2);
+            tex_formula = tex_formula.replaceAll("\\bm{", "\\boldsymbol{").replaceAll("\\bm ", "\\boldsymbol ")
+                                     .replaceAll("\\bold{", "\\mathbf{").replaceAll("\\bold ", "\\mathbf ");
             converted_line += "[tex: " + tex_formula + "]";
             return converted_line + convert_remaining_line(remaining_line);
           }
