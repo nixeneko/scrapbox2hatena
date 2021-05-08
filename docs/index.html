@@ -319,8 +319,16 @@ function scrapbox2hatena(text){
                   || filename_or_lang == "markdown" ) {
               language = "markdown";
         } else if (  filename_or_lang.endsWith(".sh")
-                  || filename_or_lang == "sh" ) {
+                  || filename_or_lang == "sh" 
+                  || filename_or_lang == "bash") {
               language = "sh";
+        } else if (  filename_or_lang.endsWith(".exs")
+                  || filename_or_lang == "elixir") {
+              language = "elixir";
+        } else if (  filename_or_lang.endsWith("nginx") {
+              language = "nginx";
+        } else if (  filename_or_lang.endsWith("sshd_config") {
+              language = "sshdconfig"
         } else { //不明
             language = "";
         }
